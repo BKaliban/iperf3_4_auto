@@ -9,8 +9,8 @@ from logger import setup_logger
 from network_utils import get_local_ip
 
 class IperfServer:
-    def __init__(self):
-        self.config = self.load_config()
+    def __init__(self, config):
+        self.config = config
         self.log_file = self.config['settings']['log_file']
         self.logger = setup_logger(self.log_file)
         
@@ -21,21 +21,12 @@ class IperfServer:
         self.iperf_path = self.setup_iperf()
         self.firewall_rule_name = "iperf3"
 
-    def load_config(self):
-        """Load the configuration settings from the config file."""
-        import configparser
-        config = configparser.ConfigParser()
-        config.read('config.ini')
-        return config
-
     def log(self, message):
-        """Log messages with timestamp."""
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_message = f"[{timestamp}] {message}"
         self.logger.info(log_message)
 
     def setup_iperf(self):
-        """Download and setup iperf3 if not already installed."""
         iperf_path = self.config['settings']['iperf_path']
         cygwin_dll_path = self.config['settings']['cygwin_dll_path']
 
@@ -71,43 +62,27 @@ class IperfServer:
         return iperf_path
 
     def add_firewall_rule(self):
-        """Add a firewall rule to allow iperf traffic."""
         self.log("Checking if firewall rule exists...")
         check_command = 'netsh advfirewall firewall show rule name="iperf3"'
         try:
-            check_process = subprocess.run(
-                check_command, shell=True, capture_output=True, text=True
-            )
-            
+            check_process = subprocess.run(check_command, shell=True, capture_output=True, text=True)
             if "No rules match" in check_process.stdout:
                 self.log(f"Firewall rule '{self.firewall_rule_name}' not found. Adding it...")
-                add_command = (
-                    'netsh advfirewall firewall add rule name="iperf3" '
-                    'dir=in action=allow protocol=TCP localport=5201'
-                )
+                add_command = 'netsh advfirewall firewall add rule name="iperf3" dir=in action=allow protocol=TCP localport=5201'
                 subprocess.run(add_command, shell=True, check=True)
                 self.log(f"Firewall rule '{self.firewall_rule_name}' added successfully.")
             else:
                 self.log(f"Firewall rule '{self.firewall_rule_name}' already exists.")
-        
         except subprocess.CalledProcessError as e:
             self.log(f"Error managing firewall rule: {e}")
             sys.exit(1)
 
     def run(self):
-        """Start the iperf3 server."""
         self.add_firewall_rule()
         self.log(f"Starting iperf3 server on {self.server_ip}:{self.port}")
-        
         while True:
             try:
-                process = subprocess.Popen(
-                    [self.iperf_path, "-s", "-p", str(self.port)],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True
-                )
-                
+                process = subprocess.Popen([self.iperf_path, "-s", "-p", str(self.port)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
                 while True:
                     output, error = process.communicate()
                     if error:
@@ -115,14 +90,11 @@ class IperfServer:
                     if "iperf Done." in output:
                         self.log("Test completed successfully. Creating new connection...")
                         break
-                
                 self.log("Restarting iperf3 server...")
-
             except KeyboardInterrupt:
                 self.log("Server stopping due to KeyboardInterrupt...")
                 process.terminate()
                 break
-            
             except Exception as e:
                 self.log(f"Error running server: {e}")
                 sys.exit(1)
